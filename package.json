@@ -1,0 +1,21 @@
+{
+  "name": "binfreshdevon",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node scripts/run-tests.mjs",
+    "test:stripe-live": "node scripts/test-stripe-live.mjs",
+    "test:hosting": "node scripts/test-hosting.mjs",
+    "seed:stripe": "node scripts/stripe-seed.mjs",
+    "migrate": "node scripts/migrate.mjs",
+    "dev": "netlify dev"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^11.1.7",
+    "postgres": "^4.0.0",
+    "stripe": "^23.1.0"
+  }
+}

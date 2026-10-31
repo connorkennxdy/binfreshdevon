@@ -1,0 +1,7 @@
+# Tom's rounds app lives on its own hostname (app.binfreshdevon.co.uk is a domain alias on this project).
+# API calls on the app host go to the functions; everything else on the app host serves /app/.
+https://app.binfreshdevon.co.uk/api/*  /api/:splat  200!
+https://app.binfreshdevon.co.uk/*      /app/:splat  200!
+
+# The app is never reachable through the marketing hostname.
+/app/*                                 /404.html    404
