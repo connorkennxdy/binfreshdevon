@@ -296,3 +296,5 @@ h2 { font-size: clamp(28px, 3vw, 38px); line-height: 1.15; letter-spacing: -0.02
 .page h1 { font-size: clamp(30px, 4vw, 44px); line-height: 1.1; letter-spacing: -0.02em; color: var(--navy); margin-bottom: 20px; }
 .page h2 { font-size: 22px; margin: 32px 0 10px; }
 .page p { font-size: 17px; line-height: 1.7; color: var(--body); margin-bottom: 14px; }
+.page ul { font-size: 17px; line-height: 1.7; color: var(--body); margin: 0 0 14px; padding-left: 1.25em; }
+.page li { margin-bottom: 6px; }

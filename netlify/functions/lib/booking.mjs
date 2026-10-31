@@ -118,7 +118,7 @@ export async function createBookingCheckout(input, { now = clockNow() } = {}) {
   const missing = priced.lines.find((l) => !(l.kind === 'recurring' ? l.service.stripe_price_recurring && l.service.stripe_price_first_clean : l.service.stripe_price_one_off));
   if (missing) { await releaseHold(visitId); throw new HttpError(503, 'Online payment isn\'t set up for that service yet.', 'not_seeded'); }
 
-  const expiresAt = Math.floor(now.getTime() / 1000) + HOLD_MINUTES * 60;
+  const expiresAt = Math.floor(Date.now() / 1000) + HOLD_MINUTES * 60; // Stripe validates against real time, never the business clock
   const common = {
     customer: stripeCustomer,
     client_reference_id: visitId,

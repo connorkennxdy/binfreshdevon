@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Book a bin clean | Bin Fresh Devon</title>
+<meta name="description" content="Book and pay for wheelie bin cleaning in North Devon online. Every 4 weeks from £8, or a one-off clean from £12.50. Monday to Saturday from 2pm.">
+<link rel="canonical" href="https://binfreshdevon.co.uk/book">
+<meta name="theme-color" content="#152C4E">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="preload" href="/fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/book/book.css">
+<script src="/book/book.js" defer></script>
+</head>
+<body>
+<header class="top"><div class="top-in"><a href="/" aria-label="Bin Fresh Devon home"><img src="/assets/logo-white.png" alt="Bin Fresh Devon" width="140" height="36"></a><a class="call" href="tel:+447394536053">07394 536053</a></div></header>
+
+<main class="wrap">
+  <div class="hero">
+    <h1>Book a bin clean</h1>
+    <p class="lede">Monday to Saturday, 2–4pm or 4–6pm. Pay securely by card. Cancel or reschedule free up to 24 hours before.</p>
+  </div>
+
+  <div class="grid">
+    <form class="stack" id="bookForm" novalidate>
+      <section class="card sec" id="s-postcode" aria-labelledby="h-postcode">
+        <h2 id="h-postcode"><span class="n">1</span> Your postcode</h2>
+        <p class="sub">We'll check we cover your street.</p>
+        <div class="row">
+          <div class="field"><label for="postcode">Postcode</label><input type="text" id="postcode" name="postcode" autocomplete="postal-code" autocapitalize="characters" inputmode="text" maxlength="9" placeholder="EX31 1AA" required></div>
+          <button class="btn" type="button" id="pcBtn">Check</button>
+        </div>
+        <p class="err" id="pcErr" role="alert"></p>
+        <div class="note warn" id="outArea" hidden>
+          <p class="sub" id="outAreaText">We don't cover that area for online booking yet. Send us your details and we'll let you know if we can fit you in.</p>
+          <p><a class="btn navy" id="quoteLink" href="/#contact">Ask for a quote</a></p>
+        </div>
+      </section>
+
+      <section class="card sec" id="s-plan" aria-labelledby="h-plan" hidden>
+        <h2 id="h-plan"><span class="n">2</span> How often?</h2>
+        <div class="opts two" role="group" aria-labelledby="h-plan">
+          <button class="opt" type="button" data-plan="recurring" aria-pressed="true"><span class="t">Every 4 weeks</span><span class="d">Cleaned on the same day every 4 weeks. Card charged on the morning of each clean.</span><span class="save" id="saveNote"></span></button>
+          <button class="opt" type="button" data-plan="one-off" aria-pressed="false"><span class="t">One-off clean</span><span class="d">A single clean. No plan.</span></button>
+        </div>
+      </section>
+
+      <section class="card sec" id="s-bins" aria-labelledby="h-bins" hidden>
+        <h2 id="h-bins"><span class="n">3</span> Your bins</h2>
+        <p class="sub">Standard household wheelie bins (any colour: general waste, recycling, garden or food).</p>
+        <div class="opts" id="tiers" role="group" aria-labelledby="h-bins"></div>
+        <div>
+          <div class="line" id="xlLine" hidden>
+            <div><div class="t">Large 360L bin</div><div class="sub" id="xlPrice"></div></div>
+            <div class="stepper" role="group" aria-label="Number of large 360L bins"><button type="button" id="xlMinus" aria-label="One fewer 360L bin">−</button><output id="xlOut" aria-live="polite">0</output><button type="button" id="xlPlus" aria-label="One more 360L bin">+</button></div>
+          </div>
+          <div class="line" id="deepLine" hidden>
+            <div><div class="t" id="deepLabel">Add a deep clean</div><div class="sub" id="deepPrice">For a very dirty bin with heavy build-up.</div></div>
+            <button class="switch" type="button" id="deepSwitch" role="switch" aria-checked="false" aria-labelledby="deepLabel"></button>
+          </div>
+        </div>
+        <p class="sub">Commercial bins (660L or 1,100L)? <a href="/#contact">Ask for a quote</a>.</p>
+        <p class="err" id="binsErr" role="alert"></p>
+      </section>
+
+      <section class="card sec" id="s-date" aria-labelledby="h-date" hidden>
+        <h2 id="h-date"><span class="n">4</span> Day and time</h2>
+        <p class="sub" id="dateSub">Pick a day, then a time window.</p>
+        <div class="cal" id="cal" aria-describedby="dateSub"><div class="spinner" aria-label="Loading dates"></div></div>
+        <div id="winBlock" hidden>
+          <p class="lbl" id="winLabel">Time window</p>
+          <div class="wins" id="wins" role="group" aria-labelledby="winLabel"></div>
+        </div>
+        <p class="sr" id="availLive" aria-live="polite"></p>
+        <p class="err" id="dateErr" role="alert"></p>
+      </section>
+
+      <section class="card sec" id="s-details" aria-labelledby="h-details" hidden>
+        <h2 id="h-details"><span class="n">5</span> Your details</h2>
+        <div class="row">
+          <div class="field"><label for="name">Full name</label><input type="text" id="name" autocomplete="name" maxlength="80" required></div>
+        </div>
+        <div class="row">
+          <div class="field"><label for="email">Email</label><input type="email" id="email" autocomplete="email" maxlength="120" required></div>
+          <div class="field"><label for="phone">Mobile <span class="hint">for your reminder text</span></label><input type="tel" id="phone" autocomplete="tel" maxlength="20" required></div>
+        </div>
+        <div class="row">
+          <div class="field"><label for="addr1">Address</label><input type="text" id="addr1" autocomplete="address-line1" maxlength="120" required></div>
+        </div>
+        <div class="row">
+          <div class="field"><label for="addr2">Address line 2 <span class="hint">optional</span></label><input type="text" id="addr2" autocomplete="address-line2" maxlength="120"></div>
+        </div>
+        <div class="row">
+          <div class="field"><label for="town">Town</label><input type="text" id="town" autocomplete="address-level2" maxlength="60" required></div>
+          <div class="field"><label for="pc2">Postcode</label><input type="text" id="pc2" autocomplete="postal-code" readonly></div>
+        </div>
+        <div class="field"><label for="access">Where are your bins kept? <span class="hint">side gate, back garden, gate code</span></label><textarea id="access" maxlength="300"></textarea></div>
+        <div class="field"><label for="collection">Council collection day <span class="hint">optional</span></label>
+          <select id="collection"><option value="">Not sure</option><option>Monday</option><option>Tuesday</option><option>Wednesday</option><option>Thursday</option><option>Friday</option><option>Saturday</option></select></div>
+        <p class="err" id="detailsErr" role="alert"></p>
+        <button class="btn" type="button" id="detailsBtn">Continue</button>
+      </section>
+
+      <section class="card sec" id="s-pay" aria-labelledby="h-pay" hidden>
+        <h2 id="h-pay"><span class="n">6</span> Check and pay</h2>
+        <p class="plain" id="plainSummary" aria-live="polite"></p>
+        <div class="lines" id="payLines"></div>
+        <label class="check"><input type="checkbox" id="terms" required> <span>I agree to the <a href="/terms" target="_blank" rel="noopener">terms</a>, including the 24-hour cancellation policy.</span></label>
+        <p class="hp" aria-hidden="true"><label>Leave this empty <input type="text" id="bf-check" tabindex="-1" autocomplete="off"></label></p>
+        <p class="err" id="payErr" role="alert"></p>
+        <button class="btn block" type="submit" id="payBtn">Continue to secure payment</button>
+        <p class="secure">You'll pay on Stripe's secure page. We never see your card details.</p>
+      </section>
+    </form>
+
+    <aside class="summary summary-desk" aria-label="Your booking">
+      <div class="card sec" aria-live="polite" id="sumCard">
+        <div><div class="total" id="sumTotal">£0.00</div><div class="per" id="sumPer">Choose your bins</div></div>
+        <div class="lines" id="sumLines"></div>
+        <div class="per" id="sumWhen"></div>
+      </div>
+    </aside>
+  </div>
+</main>
+
+<div class="sheet" role="region" aria-label="Price"><div><div class="total" id="sheetTotal">£0.00</div><div class="per" id="sheetPer">Choose your bins</div></div><button class="btn" type="button" id="sheetNext">Next</button></div>
+
+<footer class="foot"><a href="/">Home</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a><a href="/manage">Manage a booking</a></footer>
+</body>
+</html>

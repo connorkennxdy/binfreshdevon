@@ -1,16 +1,8 @@
 /* Bin Fresh Devon — site behaviour. No dependencies. */
 
-/* ==== CONFIG ====
-   Paste your Square Appointments booking page URL here
-   (Square Dashboard → Appointments → Online booking → Booking site → copy link).
-   Every element with [data-book] (all "Book" buttons) will point to it. */
-const SQUARE_BOOKING_URL = 'https://book.squareup.com/appointments/etpwgc44865bgu/location/L1R1KDWGS29ER/services';
+/* Bookings: every "Book" button links to /book (our own booking page). */
 
 (function () {
-  // Booking: every [data-book] button scrolls to the embedded Square booking (#book).
-  // SQUARE_BOOKING_URL is the fallback "open in a new tab" link under the iframe.
-  document.querySelectorAll('[data-book-direct]').forEach(function (a) { if (SQUARE_BOOKING_URL) a.href = SQUARE_BOOKING_URL; });
-
   // Header: navy at top → frosted white + colour logo after scrolling
   var header = document.getElementById('site-header');
   var onScroll = function () { header.classList.toggle('is-scrolled', window.scrollY > 24); };
@@ -39,24 +31,17 @@ const SQUARE_BOOKING_URL = 'https://book.squareup.com/appointments/etpwgc44865bg
     window.addEventListener('scroll', onBar, { passive: true });
   }
 
-  // Square iframe: Square's booking page swallows Ctrl/Cmd + mouse-wheel, so browser zoom
-  // stops working while the cursor is over it. Holding Ctrl/Cmd lets the wheel pass through
-  // to the page, so the whole site (iframe included) zooms together.
-  var sqFrame = document.querySelector('.book-frame');
-  if (sqFrame) {
-    var setPass = function (on) { sqFrame.classList.toggle('zoom-pass', on); };
-    window.addEventListener('keydown', function (e) { if (e.key === 'Control' || e.key === 'Meta') setPass(true); });
-    window.addEventListener('keyup', function (e) { if (e.key === 'Control' || e.key === 'Meta') setPass(false); });
-    window.addEventListener('blur', function () { setPass(false); });
-    window.addEventListener('wheel', function (e) { if (!e.ctrlKey && !e.metaKey) setPass(false); }, { passive: true });
-  }
-
   var year = document.getElementById('year');
   if (year) year.textContent = new Date().getFullYear();
 
   // Quote form — client validation + Netlify Forms AJAX submit
   var form = document.getElementById('quote-form');
   if (!form) return;
+  // Out-of-area postcodes from /book arrive as /?postcode=EX1%201AA#contact: prefill the quote form.
+  try {
+    var pc = new URLSearchParams(location.search).get('postcode');
+    if (pc && form.elements.postcode && !form.elements.postcode.value) form.elements.postcode.value = pc.toUpperCase().slice(0, 10);
+  } catch (e) {}
   var success = document.getElementById('form-success');
   var alertBox = document.getElementById('form-alert');
   var submitBtn = form.querySelector('.btn-submit');

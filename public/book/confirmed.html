@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Booking confirmed | Bin Fresh Devon</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#152C4E">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png">
+<link rel="preload" href="/fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/book/book.css">
+<script src="/book/confirmed.js" defer></script>
+</head>
+<body>
+<header class="top"><div class="top-in"><a href="/" aria-label="Bin Fresh Devon home"><img src="/assets/logo-white.png" alt="Bin Fresh Devon" width="140" height="36"></a><a class="call" href="tel:+447394536053">07394 536053</a></div></header>
+<main class="wrap">
+  <div class="center hero">
+    <div id="waiting" class="card sec" aria-live="polite">
+      <div class="spinner" aria-hidden="true"></div>
+      <h1>Confirming your booking…</h1>
+      <p class="sub">This usually takes a few seconds.</p>
+    </div>
+    <div id="done" class="card sec" hidden>
+      <h1 id="doneTitle">You're booked in.</h1>
+      <p class="lede" id="doneWhen"></p>
+      <div class="lines" id="doneLines"></div>
+      <p class="plain">Please leave your bins out after the council collection, lids unlocked, with nothing inside. We'll text you the day before. Your card receipt comes from Stripe, and your confirmation email has a link to reschedule or cancel.</p>
+      <p><a class="btn" href="/">Back to the homepage</a></p>
+    </div>
+    <div id="slow" class="card sec" hidden>
+      <h1>Payment received, still confirming</h1>
+      <p class="sub">Your payment went through, but our system is taking longer than usual to confirm it. You'll get a confirmation email shortly. If nothing arrives within 15 minutes, call us on <a href="tel:+447394536053">07394 536053</a>.</p>
+    </div>
+  </div>
+</main>
+<footer class="foot"><a href="/">Home</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a><a href="/manage">Manage a booking</a></footer>
+</body>
+</html>
