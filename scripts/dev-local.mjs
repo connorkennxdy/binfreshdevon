@@ -70,6 +70,12 @@ http.createServer(async (req, res) => {
     const host = (req.headers.host || '').split(':')[0];
     const url = new URL(req.url, `http://${req.headers.host}`);
     if (url.pathname === '/__fake-checkout') return fakeCheckout(req, res, url);
+    if (url.pathname === '/__magic') { // dev only: sign in as a customer by email
+      const [c] = await h.sql`select id from customers where lower(email) = ${String(url.searchParams.get('email') || '').toLowerCase()}`;
+      if (!c) { res.writeHead(404); return res.end('no such customer'); }
+      const { createManageToken } = await import('../netlify/functions/lib/auth.mjs');
+      res.writeHead(302, { location: '/m/' + (await createManageToken(c.id)) }); return res.end();
+    }
     if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/m/')) {
       const r = routes.find((x) => x.re.test(url.pathname) && !x.excluded.some((e) => e.test(url.pathname)));
       if (!r) { res.writeHead(404); return res.end(); }

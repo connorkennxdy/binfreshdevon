@@ -147,3 +147,4 @@ input[aria-invalid=true], textarea[aria-invalid=true] { border-color: var(--red)
   #tiers .opt .t { font-size: 15px; }
   #tiers .opt .p { font-size: 13px; }
 }
+.opts.slots { grid-template-columns: repeat(2, minmax(0, 1fr)); }
