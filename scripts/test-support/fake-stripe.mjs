@@ -117,7 +117,7 @@ export async function startFakeStripe() {
       if (b.items) for (const it of b.items) { const x = s.items.data.find((y) => y.id === it.id); if (x && it.price) x.price = priceOf(it.price); }
       s._updates = (s._updates || []).concat([b]); return s;
     }],
-    ['DELETE', /^\/v1\/subscriptions\/(sub_\w+)$/, (b, m) => { const s = db.subscriptions[m[1]]; if (!s) throw Object.assign(new Error('No such subscription'), { status: 404, code: 'resource_missing' }); s.status = 'canceled'; s._cancel = b; return s; }],
+    ['DELETE', /^\/v1\/subscriptions\/(sub_\w+)$/, (b, m, q) => { const s = db.subscriptions[m[1]]; if (!s) throw Object.assign(new Error('No such subscription'), { status: 404, code: 'resource_missing' }); s.status = 'canceled'; s._cancel = { ...q, ...b }; return s; }],
     ['POST', /^\/v1\/refunds$/, (b) => {
       const pi = db.payment_intents[b.payment_intent]; if (!pi) throw Object.assign(new Error('No such payment_intent'), { status: 400 });
       const ch = db.charges[pi.latest_charge]; const amount = Number(b.amount || ch.amount - ch.amount_refunded);

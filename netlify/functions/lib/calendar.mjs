@@ -102,7 +102,7 @@ export async function disconnectCalendar() {
 async function loadVisit(id) {
   const sql = db();
   const [v] = await sql`
-    select v.*, c.name, c.phone, c.address_line1, c.address_line2, c.town, c.postcode, c.access_notes
+    select v.*, v.updated_at::text as updated_at_exact, c.name, c.phone, c.address_line1, c.address_line2, c.town, c.postcode, c.access_notes
     from visits v join customers c on c.id = v.customer_id where v.id = ${id}`;
   if (!v) return null;
   v.items = await sql`select s.slug, s.name, vi.qty from visit_items vi join services s on s.id = vi.service_id where vi.visit_id = ${id} order by s.sort`;
@@ -158,7 +158,7 @@ export async function syncVisit(visitId) {
       const r = await gapi(cfg, 'DELETE', `${cal}/${encodeURIComponent(v.google_event_id)}`);
       if (![200, 204, 404, 410].includes(r.status)) throw new Error(`calendar delete ${r.status}`);
     }
-    await sql`update visits set google_event_id = null, calendar_synced_at = ${v.updated_at} where id = ${v.id}`;
+    await sql`update visits set google_event_id = null, calendar_synced_at = ${v.updated_at_exact}::timestamptz where id = ${v.id}`;
     return 'deleted';
   }
   const settings = await getSettings();
@@ -170,7 +170,7 @@ export async function syncVisit(visitId) {
   }
   if (!r) r = await gapi(cfg, 'POST', cal, body);
   if (r.status !== 200) throw new Error(`calendar upsert ${r.status}`);
-  await sql`update visits set google_event_id = ${r.data.id}, calendar_synced_at = ${v.updated_at} where id = ${v.id}`;
+  await sql`update visits set google_event_id = ${r.data.id}, calendar_synced_at = ${v.updated_at_exact}::timestamptz where id = ${v.id}`;
   return 'synced';
 }
 

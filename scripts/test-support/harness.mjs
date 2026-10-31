@@ -86,3 +86,20 @@ export function bookingBody(date, over = {}) {
     ...over,
   };
 }
+
+let emailSeq = 0;
+// Book through the real API and complete payment through the fake Stripe + webhook. Returns { visit, plan, session, subscription }.
+export async function bookAndPay(h, date, { plan = 'one-off', window = '14-16', items = { 'household-2': 1 }, deep = false, email, name = 'Test Customer', phone = '07700 900123' } = {}) {
+  email = email || `cust${++emailSeq}-${Date.now()}@example.com`;
+  const body = bookingBody(date, { plan, window, items, deep_clean: deep, customer: { ...bookingBody().customer, email, name, phone } });
+  const r = await h.call('public-create-checkout', { method: 'POST', path: '/api/checkout', body, ip: '10.0.' + (emailSeq % 250) + '.' + (1 + (emailSeq % 200)) });
+  if (r.status !== 200) throw new Error('checkout failed: ' + JSON.stringify(r.data));
+  const s = Object.values(h.stripe.db.sessions).at(-1);
+  const done = h.stripe.completeSession(s.id);
+  await h.webhook('checkout.session.completed', done.session);
+  if (done.invoice) await h.webhook('invoice.paid', done.invoice);
+  const [visit] = await h.sql`select * from visits where stripe_checkout_session_id = ${s.id}`;
+  const [p] = visit.plan_id ? await h.sql`select * from plans where id = ${visit.plan_id}` : [null];
+  const [customer] = await h.sql`select * from customers where id = ${visit.customer_id}`;
+  return { visit, plan: p, customer, session: done.session, subscription: done.subscription };
+}
