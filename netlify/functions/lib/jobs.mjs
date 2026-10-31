@@ -43,12 +43,18 @@ export async function applyPriceChanges({ now = clockNow() } = {}) {
   const today = londonDate(now);
   const due = await sql`select * from price_changes where applied_at is null and effective_date <= ${addDays(today, 1)}`;
   for (const pc of due) {
-    const items = await sql`select pi.*, p.stripe_subscription_id from plan_items pi join plans p on p.id = pi.plan_id
+    const items = await sql`select pi.*, p.stripe_subscription_id, s.stripe_product from plan_items pi join plans p on p.id = pi.plan_id join services s on s.id = pi.service_id
                             where pi.service_id = ${pc.service_id} and p.status in ('active','paused') and pi.unit_price_pence <> ${pc.new_recurring_pence}`;
+    let skipped = 0;
     for (const it of items) {
-      if (it.stripe_subscription_item_id) {
-        await stripe().subscriptionItems.update(it.stripe_subscription_item_id, { price: pc.new_stripe_price, proration_behavior: 'none' });
+      let itemId = it.stripe_subscription_item_id;
+      if (!itemId && it.stripe_subscription_id) { // look it up rather than let the DB and Stripe disagree
+        const sub = await stripe().subscriptions.retrieve(it.stripe_subscription_id);
+        itemId = sub.items.data.find((x) => (typeof x.price.product === 'string' ? x.price.product : x.price.product?.id) === it.stripe_product)?.id || null;
+        if (itemId) await sql`update plan_items set stripe_subscription_item_id = ${itemId} where plan_id = ${it.plan_id} and service_id = ${it.service_id}`;
       }
+      if (!itemId) { skipped++; continue; } // never change our price without changing Stripe's
+      await stripe().subscriptionItems.update(itemId, { price: pc.new_stripe_price, proration_behavior: 'none' });
       await sql`update plan_items set unit_price_pence = ${pc.new_recurring_pence} where plan_id = ${it.plan_id} and service_id = ${pc.service_id}`;
       const vids = await sql`select id from visits where plan_id = ${it.plan_id} and original_date >= ${pc.effective_date} and payment_status = 'due' and status = 'scheduled'`;
       for (const v of vids) {
@@ -56,6 +62,7 @@ export async function applyPriceChanges({ now = clockNow() } = {}) {
         await sql`update visits set amount_pence = (select coalesce(sum(qty * unit_price_pence),0) from visit_items where visit_id = ${v.id}) where id = ${v.id}`;
       }
     }
+    if (skipped) { console.error('price change: plans without a Stripe item', pc.id, skipped); continue; } // retried tomorrow
     await sql`update price_changes set applied_at = now() where id = ${pc.id}`;
     await audit('system', 'price_change.applied', 'service', pc.service_id, { plans: items.length });
   }

@@ -7,7 +7,7 @@ export function stripe() {
   if (_stripe) return _stripe;
   const key = env('STRIPE_SECRET_KEY');
   if (!key) throw new HttpError(503, 'Payments are not configured yet.');
-  const opts = { maxNetworkRetries: 2, timeout: 20000, appInfo: { name: 'Bin Fresh Rounds' } };
+  const opts = { maxNetworkRetries: 1, timeout: 12000, appInfo: { name: 'Bin Fresh Rounds' } };
   // Tests point the SDK at a local fake Stripe.
   if (env('STRIPE_API_HOST')) {
     opts.host = env('STRIPE_API_HOST');
@@ -35,8 +35,11 @@ export function invoicePaymentIntentId(inv) {
 }
 // Start of the recurring period this invoice bills (the visit's billing date).
 export function invoiceRecurringPeriodStart(inv) {
+  // Only a subscription-item line carries the cycle's period. Other lines (e.g. an extra invoice item)
+  // have their own creation-time periods and must never decide which visit is paid.
   const lines = inv?.lines?.data || [];
-  const rec = lines.find((l) => l.parent?.subscription_item_details || l.price?.recurring || l.pricing?.price_details) || lines[0];
+  const rec = lines.find((l) => l.parent?.type === 'subscription_item_details' || l.parent?.subscription_item_details)
+    || lines.find((l) => l.price?.recurring);
   return rec?.period?.start ?? inv?.period_end ?? null;
 }
 

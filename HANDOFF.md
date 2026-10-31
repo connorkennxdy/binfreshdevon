@@ -1,6 +1,6 @@
 # Bin Fresh: Rounds & Bookings — build status
 
-Built 31 Oct 2026 against the handoff spec. Everything in the spec is implemented. All 41 automated tests pass locally against Postgres 16 with fake Stripe/Resend/Twilio/Google. Anything that needs real accounts, a deploy or an iPhone is still to do, and is listed below.
+Built 31 Oct 2026 against the handoff spec. Everything in the spec is implemented. All 50 automated tests pass locally against Postgres 16 with fake Stripe/Resend/Twilio/Google. Anything that needs real accounts, a deploy or an iPhone is still to do, and is listed below.
 
 ## Branches
 
@@ -52,16 +52,31 @@ Merging `build` replaces the Square booking on the live site, so don't merge unt
 | ⚙ P7-1 money matches Stripe | Pass against the fake's own charge/fee/refund records; repeat against the real dashboard |
 | ☐ P7-2 Money screen readable on iPhone | Checked at iPhone 13 size |
 
+## Independent review of the payment code
+
+A separate reviewer went through the money paths before handover and found nine issues the tests didn't cover. All are fixed, and each has a regression test in `scripts/tests/r-review-fixes.test.mjs`:
+
+1. **Account takeover by email (high).** A booking with an existing customer's email used to overwrite their phone before payment, which would route their magic-link texts to whoever typed it. Now an existing customer record is never changed by an unpaid booking. Once paid, the address is applied but a different phone is only flagged for Tom.
+2. **Pause → resume charged for a cancelled visit (high).** Resume now recreates the visit, and any payment that lands on a non-scheduled visit is flagged and emailed to Tom.
+3. **A webhook killed mid-way was never retried (high).** Event claims now record `processed_at`; a claim stuck for 5+ minutes is reprocessed on Stripe's retry.
+4. **Last-slot race at the 30-minute mark.** The slot hold now outlives the Checkout session by 15 minutes.
+5. **A renewal invoice with an extra item could pay the wrong visit.** Visits are now matched from the subscription line only.
+6. **Refund amounts.** Refunds are capped at what's left on the charge and recorded once.
+7. **Two open checkouts for one customer.** Starting a new one expires the older tab.
+8. **Moving a plan before its paid first clean double-charged.** Now refused with a clear message.
+9. **Async payment methods.** Checkout is card-only (Apple Pay and Google Pay still work).
+
 ## Where I deviated from the spec, and why
 
 1. **`window` column is `time_window`.** `WINDOW` is a reserved word in Postgres; values are unchanged (`'14-16'`, `'16-18'`).
 2. **Database access uses the `postgres` driver over Supabase's transaction pooler, not `@supabase/supabase-js`.** The capacity guarantee needs real transactions with an advisory lock, and the whole test suite runs against a plain Postgres. RLS is still on with no policies, so the anon key reads nothing (P1-1 proves it). The secret is now `SUPABASE_DB_URL` (pooler connection string) instead of `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`.
 3. **SMS links use a 12-character code, email links the full 32-byte token.** A 32-byte token makes the reminder 190+ characters (two SMS segments). Codes are 71 bits, hashed at rest, 90-day expiry, and `/m/` is rate-limited per IP. The reminder also uses `2-4pm` with a hyphen: the en dash in the spec template switches the whole SMS to UCS-2 (70 characters a segment, so 3 segments). Worst case is now 155 characters, one segment.
 4. **Card-update links send the manage link, not a Customer Portal URL.** Portal session URLs expire after a few minutes, too short for an email or text. "Update card" on `/manage` opens a fresh portal session.
-5. **Extra tables:** `capacity_overrides` (Tom's per-day caps), `price_changes` (14-day notice, applied by the daily job the day before), `message_log` (every email/SMS, IDs and template names only, no message bodies).
-6. **Customers can cancel a one-off visit** on `/manage` (refunded, 24h+ before). §2.6 only lists plan cancellation, but §2.7 promises free cancellation for every visit.
-7. **Hold = 31 minutes.** Stripe requires a Checkout session to live at least 30 minutes, so the hold and session expiry are both 31 minutes.
-8. **Pause plan** uses Stripe `pause_collection: void` and cancels future unpaid visits. **Resume** asks for a next visit date and re-anchors billing there (same mechanism as "move cadence").
+5. **Extra columns:** `visits.booking_details` (see review fix 1), `payments.refund_ids`, `stripe_events.processed_at`.
+6. **Extra tables:** `capacity_overrides` (Tom's per-day caps), `price_changes` (14-day notice, applied by the daily job the day before), `message_log` (every email/SMS, IDs and template names only, no message bodies).
+7. **Customers can cancel a one-off visit** on `/manage` (refunded, 24h+ before). §2.6 only lists plan cancellation, but §2.7 promises free cancellation for every visit.
+8. **Hold = 46 minutes, Checkout session = 31.** Stripe requires a session to live at least 30 minutes; the hold outlives it so a last-second payment keeps its slot.
+9. **Pause plan** uses Stripe `pause_collection: void` and cancels future unpaid visits. **Resume** asks for a next visit date and re-anchors billing there (same mechanism as "move cadence").
 
 ## Things I found that you should know
 

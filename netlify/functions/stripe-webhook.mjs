@@ -27,10 +27,17 @@ export default async (req) => {
   const fn = HANDLERS[event.type];
   if (!fn) return json({ received: true, ignored: true });
   const sql = db();
-  const [fresh] = await sql`insert into stripe_events (id, type) values (${event.id}, ${event.type}) on conflict (id) do nothing returning id`;
+  // Claim the event. A claim with no processed_at older than 5 minutes means the function died mid-way
+  // (timeout, crash): Stripe's retry reclaims it instead of being told "duplicate" forever.
+  const [fresh] = await sql`
+    insert into stripe_events (id, type) values (${event.id}, ${event.type})
+    on conflict (id) do update set received_at = now()
+      where stripe_events.processed_at is null and stripe_events.received_at < now() - interval '5 minutes'
+    returning id`;
   if (!fresh) return json({ received: true, duplicate: true });
   try {
     const result = await fn(event.data.object);
+    await sql`update stripe_events set processed_at = now() where id = ${event.id}`;
     console.log('stripe event', event.type, event.id, result);
     return json({ received: true, result });
   } catch (e) {

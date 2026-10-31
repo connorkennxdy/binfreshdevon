@@ -78,6 +78,7 @@ create table visits (
   completed_at timestamptz,
   moved_by_system boolean not null default false,
   attention text,                            -- non-null = flag shown in Tom's app (e.g. moved, overbooked)
+  booking_details jsonb,                     -- details typed at booking for an existing customer; applied only once paid
   notes text,
   updated_at timestamptz default now(),
   created_at timestamptz default now()
@@ -117,6 +118,7 @@ create table payments (
   amount_pence int not null,
   fee_pence int,
   refunded_pence int default 0,
+  refund_ids text[] not null default '{}',
   status text not null,
   paid_at timestamptz
 );
@@ -148,7 +150,7 @@ create table manage_tokens (
   created_at timestamptz default now()
 );
 
-create table stripe_events (id text primary key, type text, received_at timestamptz default now());
+create table stripe_events (id text primary key, type text, received_at timestamptz default now(), processed_at timestamptz);
 
 -- Scheduled price changes: customers get 14 days' notice before a plan price moves.
 create table price_changes (

@@ -9,7 +9,8 @@ import { siteUrl, appUrl } from './env.mjs';
 import * as notify from './notify.mjs';
 import { syncVisitSafe, deleteEventSafe } from './calendar.mjs';
 
-export const HOLD_MINUTES = 31;          // Checkout sessions must live >= 30 minutes; hold matches the session
+export const HOLD_MINUTES = 31;          // Checkout sessions must live >= 30 minutes
+export const HOLD_GRACE_MINUTES = 15;    // the slot hold outlives the session, so a payment in the last minute still has its slot
 export const GENERATE_WEEKS = 8;
 export const CYCLE_DAYS = 28;
 const DAY_MS = 86400000;
@@ -48,6 +49,39 @@ export function validateCustomer(d) {
 }
 
 // ---------- customers ----------
+// Online bookings: a new email creates a customer; an existing email is reused UNCHANGED (anyone can type an
+// email, so contact details from an unauthenticated form must not overwrite the record). What they typed is
+// kept on the visit and applied once the booking is paid (address), or flagged for Tom (phone).
+export async function customerForBooking(c) {
+  const sql = db();
+  const [existing] = await sql`select * from customers where lower(email) = ${c.email}`;
+  if (existing) return { customer: existing, pending: c };
+  const [row] = await sql`
+    insert into customers (name, email, phone, address_line1, address_line2, town, postcode, access_notes, collection_day, source)
+    values (${c.name}, ${c.email}, ${c.phone}, ${c.address_line1}, ${c.address_line2}, ${c.town}, ${c.postcode}, ${c.access_notes}, ${c.collection_day}, 'online')
+    on conflict (lower(email)) do nothing returning *`;
+  if (row) return { customer: row, pending: null };
+  const [again] = await sql`select * from customers where lower(email) = ${c.email}`; // lost a race with a parallel booking
+  return { customer: again, pending: c };
+}
+
+// After payment: apply the booking's address/access details; never the phone (that receives magic links).
+async function applyBookingDetails(visit) {
+  const d = visit.booking_details;
+  if (!d) return;
+  const sql = db();
+  const [c] = await sql`select * from customers where id = ${visit.customer_id}`;
+  await sql`update customers set address_line1 = ${d.address_line1}, address_line2 = ${d.address_line2 || null}, town = ${d.town}, postcode = ${d.postcode},
+              access_notes = coalesce(${d.access_notes || null}, access_notes), collection_day = coalesce(${d.collection_day || null}, collection_day)
+            where id = ${c.id}`;
+  const phone = notify.ukMobile(d.phone);
+  if (phone && phone !== c.phone) {
+    await sql`update visits set attention = ${`New mobile given at booking: ${phone}. Check with the customer, then edit their record.`} where id = ${visit.id}`;
+  }
+  await sql`update visits set booking_details = null where id = ${visit.id}`;
+  try { const [fresh] = await sql`select * from customers where id = ${c.id}`; if (fresh.stripe_customer_id) await ensureStripeCustomer(fresh); } catch (e) { console.error('stripe customer refresh failed', e.message); }
+}
+
 export async function upsertCustomer(c, source = 'online') {
   const sql = db();
   const [row] = await sql`
@@ -95,8 +129,9 @@ export async function createBookingCheckout(input, { now = clockNow() } = {}) {
   if (rule) throw new HttpError(409, 'That date can\'t be booked any more. Please pick another.', 'date_' + rule);
   if (input.terms !== true) throw bad('Please agree to the terms.', 'terms');
 
-  const customer = await upsertCustomer(customerIn);
+  const { customer, pending } = await customerForBooking(customerIn);
   const stripeCustomer = await ensureStripeCustomer(customer);
+  await expireOpenCheckouts(customer.id); // Fix: an older unpaid tab can't also be paid
 
   let planId = null;
   if (planType === 'recurring') {
@@ -106,7 +141,7 @@ export async function createBookingCheckout(input, { now = clockNow() } = {}) {
       await sql`insert into plan_items (plan_id, service_id, qty, unit_price_pence) values (${planId}, ${l.service.id}, ${l.qty}, ${l.unit})`;
     }
   }
-  const [{ book_slot: visitId }] = await sql`select book_slot(${customer.id}, ${planId}, ${date}, ${win}, ${date}, 'held', ${priced.firstPence}, 'unpaid', ${HOLD_MINUTES}, false)`;
+  const [{ book_slot: visitId }] = await sql`select book_slot(${customer.id}, ${planId}, ${date}, ${win}, ${date}, 'held', ${priced.firstPence}, 'unpaid', ${HOLD_MINUTES + HOLD_GRACE_MINUTES}, false)`;
   if (!visitId) {
     if (planId) await sql`delete from plans where id = ${planId}`;
     throw new HttpError(409, 'Sorry, that time has just filled up. Please pick another.', 'full');
@@ -114,6 +149,7 @@ export async function createBookingCheckout(input, { now = clockNow() } = {}) {
   for (const l of priced.lines) {
     await sql`insert into visit_items (visit_id, service_id, qty, unit_price_pence) values (${visitId}, ${l.service.id}, ${l.qty}, ${l.unit})`;
   }
+  if (pending) await sql`update visits set booking_details = ${sql.json(pending)} where id = ${visitId}`;
 
   const missing = priced.lines.find((l) => !(l.kind === 'recurring' ? l.service.stripe_price_recurring && l.service.stripe_price_first_clean : l.service.stripe_price_one_off));
   if (missing) { await releaseHold(visitId); throw new HttpError(503, 'Online payment isn\'t set up for that service yet.', 'not_seeded'); }
@@ -128,6 +164,7 @@ export async function createBookingCheckout(input, { now = clockNow() } = {}) {
     expires_at: expiresAt,
     locale: 'en-GB',
     customer_update: { name: 'never', address: 'never' },
+    payment_method_types: ['card'], // card wallets included; no async methods that could fail after confirmation
   };
   let params;
   if (planType === 'one-off') {
@@ -160,6 +197,16 @@ export async function createBookingCheckout(input, { now = clockNow() } = {}) {
   await sql`update visits set stripe_checkout_session_id = ${session.id} where id = ${visitId}`;
   if (planId) await sql`update plans set stripe_checkout_session_id = ${session.id} where id = ${planId}`;
   return { url: session.url, session_id: session.id, visit_id: visitId };
+}
+
+async function expireOpenCheckouts(customerId) {
+  const sql = db();
+  const open = await sql`select id, stripe_checkout_session_id from visits where customer_id = ${customerId} and status = 'held' and stripe_checkout_session_id is not null`;
+  for (const v of open) {
+    try { await stripe().checkout.sessions.expire(v.stripe_checkout_session_id); }
+    catch (e) { if (!/expire|status|complete/i.test(e?.message || '')) console.error('expire session failed', e?.message); continue; } // already completed: leave it for the webhook
+    await releaseHold(v.id);
+  }
 }
 
 export async function releaseHold(visitId) {
@@ -205,6 +252,7 @@ export async function onCheckoutCompleted(session) {
               stripe_payment_intent_id = coalesce(${typeof session.payment_intent === 'string' ? session.payment_intent : null}, stripe_payment_intent_id),
               stripe_invoice_id = coalesce(${typeof session.invoice === 'string' ? session.invoice : null}, stripe_invoice_id)
             where id = ${visitId} and status in ('held','scheduled')`;
+  if (paid) await applyBookingDetails(visit);
   [visit] = await sql`select * from visits where id = ${visitId}`;
   const [customer] = await sql`select * from customers where id = ${visit.customer_id}`;
 
@@ -290,6 +338,11 @@ export async function onInvoicePaid(invoiceIn) {
   const { visit, first } = await visitForInvoice(inv, plan);
   if (!visit) return 'no_visit';
   if (first && !plan.first_paid_upfront) return 'ignored'; // migration confirm: £0 invoice
+  if (inv.amount_paid > 0 && !['scheduled', 'done'].includes(visit.status)) {
+    await sql`update visits set attention = 'Paid, but this visit was not scheduled: refund or rebook it' where id = ${visit.id}`;
+    const [c] = await sql`select name from customers where id = ${visit.customer_id}`;
+    await tomAlertSafe('A payment needs checking', [`${c.name} was charged for ${shortDate(visit.original_date)}, but that visit is ${visit.status}. Refund it or move it back onto the round.`], `${appUrl()}/#/visit/${visit.id}`);
+  }
   if (inv.amount_paid > 0 || first) {
     await sql`update visits set payment_status = 'paid', stripe_invoice_id = ${inv.id},
                 stripe_payment_intent_id = coalesce(${invoicePaymentIntentId(inv)}, stripe_payment_intent_id),
@@ -364,7 +417,11 @@ export async function placeVisit(plan, originalDate, { notifyMove = true } = {})
   const sql = db();
   const settings = await getSettings();
   const [existing] = await sql`select * from visits where plan_id = ${plan.id} and original_date = ${originalDate}`;
-  if (existing) return existing;
+  if (existing && !(existing.status === 'cancelled' && ['due', 'unpaid', 'failed'].includes(existing.payment_status))) return existing;
+  if (existing) { // cancelled while paused (never charged): replace it with a live visit
+    await sql`delete from visits where id = ${existing.id}`;
+    if (existing.google_event_id) await deleteEventSafe(existing.google_event_id);
+  }
   const items = await planItems(plan.id);
   if (!items.length) return null;
   const amount = items.reduce((a, i) => a + i.qty * i.unit_price_pence, 0);
@@ -490,9 +547,14 @@ export async function refundVisit(visitId, { actor = 'system', cancel = false } 
   let pi = v.stripe_payment_intent_id;
   if (!pi) { const [p] = await sql`select stripe_payment_intent_id from payments where visit_id = ${v.id} order by paid_at desc limit 1`; pi = p?.stripe_payment_intent_id; }
   if (!pi) throw bad('No card payment found for this visit.', 'no_payment');
-  // A first clean on a plan shares its payment with any deep-clean add-on, so refund this visit's amount only.
-  const refund = await stripe().refunds.create({ payment_intent: pi, amount: v.amount_pence, metadata: { visit_id: v.id } }, { idempotencyKey: `refund-${v.id}` });
-  await sql`update payments set refunded_pence = refunded_pence + ${refund.amount}, status = 'refunded' where stripe_payment_intent_id = ${pi}`;
+  const [pay] = await sql`select * from payments where stripe_payment_intent_id = ${pi}`;
+  const refundable = pay ? pay.amount_pence - (pay.refunded_pence || 0) : v.amount_pence;
+  const amount = Math.min(v.amount_pence, refundable); // never more than is left on the charge
+  if (amount <= 0) throw bad('This payment has already been refunded.', 'refunded');
+  const refund = await stripe().refunds.create({ payment_intent: pi, amount, metadata: { visit_id: v.id } }, { idempotencyKey: `refund-${v.id}` });
+  await sql`update payments set refunded_pence = refunded_pence + ${refund.amount}, refund_ids = array_append(refund_ids, ${refund.id}),
+              status = case when refunded_pence + ${refund.amount} >= amount_pence then 'refunded' else 'partially_refunded' end
+            where stripe_payment_intent_id = ${pi} and not (${refund.id} = any(refund_ids))`;
   await sql`update visits set payment_status = 'refunded', status = ${cancel ? 'cancelled' : v.status} where id = ${v.id}`;
   await audit(actor, 'visit.refund', 'visit', v.id, { amount: refund.amount });
   await syncVisitSafe(v.id);
@@ -562,9 +624,20 @@ export async function resumePlan(planId, nextDate, actor) {
   const sql = db();
   const [plan] = await sql`select * from plans where id = ${planId}`;
   if (!plan || plan.status !== 'paused') throw bad('Only paused plans can be resumed.');
+  await assertCadenceDate(plan, nextDate);
   if (plan.stripe_subscription_id) await stripe().subscriptions.update(plan.stripe_subscription_id, { pause_collection: '' });
   await sql`update plans set status = 'active', paused_at = null where id = ${planId}`;
   return movePlanCadence(planId, nextDate, actor);
+}
+
+// A new cadence must start on a working day 3+ days away, and after any clean already paid for
+// (otherwise the customer would be charged on the new date and still have the paid visit).
+async function assertCadenceDate(plan, nextDate, { now = clockNow() } = {}) {
+  const settings = await getSettings();
+  if (!isDate(nextDate) || nextDate <= addDays(londonDate(now), 2)) throw bad('Pick a next visit date at least 3 days away.', 'date');
+  if (!settings.bookable_weekdays.includes(isoWeekday(nextDate))) throw bad('Pick a working day.', 'date');
+  const [paid] = await db()`select max(visit_date) as d from visits where plan_id = ${plan.id} and status = 'scheduled' and payment_status = 'paid' and visit_date >= ${londonDate(now)}`;
+  if (paid?.d && nextDate <= paid.d) throw bad(`This plan has a paid clean on ${shortDate(paid.d)}. Pick a date after it.`, 'date');
 }
 
 // Tom moves a whole plan: new anchor, billing re-anchored with no proration, future visits regenerated.
@@ -573,13 +646,12 @@ export async function movePlanCadence(planId, nextDate, actor, { now = clockNow(
   const settings = await getSettings();
   const [plan] = await sql`select * from plans where id = ${planId}`;
   if (!plan || plan.status !== 'active') throw bad('Only active plans can be moved.');
-  if (!isDate(nextDate) || nextDate <= addDays(londonDate(now), 2)) throw bad('Pick a next visit date at least 3 days away.', 'date');
-  if (!settings.bookable_weekdays.includes(isoWeekday(nextDate))) throw bad('Pick a working day.', 'date');
+  await assertCadenceDate(plan, nextDate, { now });
   const trialEnd = Math.floor(londonToUtc(nextDate, settings.charge_time || '07:00').getTime() / 1000);
   if (plan.stripe_subscription_id) await stripe().subscriptions.update(plan.stripe_subscription_id, { trial_end: trialEnd, proration_behavior: 'none' });
-  // Future unpaid visits go; paid ones stay (they were paid for).
+  // Future unpaid visits go (including ones cancelled by a pause); paid ones stay (they were paid for).
   const today = londonDate(now);
-  const gone = await sql`delete from visits where plan_id = ${planId} and visit_date > ${today} and status = 'scheduled' and payment_status in ('due','failed') returning id, google_event_id`;
+  const gone = await sql`delete from visits where plan_id = ${planId} and visit_date > ${today} and status in ('scheduled','cancelled') and payment_status in ('due','failed','unpaid') returning id, google_event_id`;
   await sql`update plans set anchor_date = ${nextDate}, first_paid_upfront = false where id = ${planId}`;
   const [np] = await sql`select * from plans where id = ${planId}`;
   await generateVisitsForPlan(np, { now });

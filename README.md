@@ -32,7 +32,7 @@ Needs a Postgres 15+ server you can create databases on (Supabase isn't needed; 
 ```bash
 npm install
 # e.g. with Docker:  docker run -d -p 54329:5432 -e POSTGRES_HOST_AUTH_METHOD=trust postgres:16
-TEST_PG_URL=postgres://postgres@127.0.0.1:54329/postgres npm test          # 41 tests, ~10s
+TEST_PG_URL=postgres://postgres@127.0.0.1:54329/postgres npm test          # 50 tests, ~15s
 STRIPE_SECRET_KEY=sk_test_... npm run test:stripe-live                      # P2-6 on real Stripe with a test clock
 node scripts/test-hosting.mjs                                               # P0-3 against the deployed site
 ```
