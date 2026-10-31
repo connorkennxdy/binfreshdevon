@@ -27,3 +27,7 @@
   X-Frame-Options: DENY
   Cache-Control: no-store
   Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; font-src 'self'; form-action 'self' https://billing.stripe.com; frame-ancestors 'none'; base-uri 'self'; object-src 'none'
+
+/app/sw.js
+  Cache-Control: no-cache
+  Service-Worker-Allowed: /

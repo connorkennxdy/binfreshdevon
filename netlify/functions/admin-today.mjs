@@ -15,7 +15,7 @@ export default admin(async ({ url }) => {
   const [{ collected }] = await sql`select coalesce(sum(amount_pence - coalesce(refunded_pence,0)),0)::int as collected from payments where paid_at >= ${from} and paid_at < ${to} and status <> 'failed'`;
   const counted = visits.filter((v) => v.status !== 'skipped');
   const failedToday = visits.filter((v) => v.payment_status === 'failed' && v.status === 'scheduled');
-  const attention = await loadVisits(sql`v.status = 'scheduled' and v.visit_date >= ${today} and v.visit_date <= ${addDays(today, 14)} and v.attention is not null and v.attention not like 'Moved%'`);
+  const attention = await loadVisits(sql`v.status = 'scheduled' and v.visit_date >= ${today} and v.visit_date <= ${addDays(today, 14)} and v.attention is not null and v.attention not like 'Moved%' and v.attention not like 'Payment failed%'`);
   const [block] = await sql`select reason from blocks where block_date = ${date} and time_window is null limit 1`;
   return {
     date, date_long: longDate(date), is_today: date === today,

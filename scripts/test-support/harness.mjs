@@ -90,9 +90,10 @@ export function bookingBody(date, over = {}) {
 let emailSeq = 0;
 // Book through the real API and complete payment through the fake Stripe + webhook. Returns { visit, plan, session, subscription }.
 export async function bookAndPay(h, date, { plan = 'one-off', window = '14-16', items = { 'household-2': 1 }, deep = false, email, name = 'Test Customer', phone = '07700 900123' } = {}) {
-  email = email || `cust${++emailSeq}-${Date.now()}@example.com`;
+  const seq = ++emailSeq;
+  email = email || `cust${seq}-${Date.now()}@example.com`;
   const body = bookingBody(date, { plan, window, items, deep_clean: deep, customer: { ...bookingBody().customer, email, name, phone } });
-  const r = await h.call('public-create-checkout', { method: 'POST', path: '/api/checkout', body, ip: '10.0.' + (emailSeq % 250) + '.' + (1 + (emailSeq % 200)) });
+  const r = await h.call('public-create-checkout', { method: 'POST', path: '/api/checkout', body, ip: '10.0.' + (seq % 250) + '.' + (1 + (seq % 200)) });
   if (r.status !== 200) throw new Error('checkout failed: ' + JSON.stringify(r.data));
   const s = Object.values(h.stripe.db.sessions).at(-1);
   const done = h.stripe.completeSession(s.id);
